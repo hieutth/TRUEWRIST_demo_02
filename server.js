@@ -39,53 +39,18 @@ app.post("/api/generate-image", async (req, res) => {
       return res.status(400).json({ error: "Prompt is required" });
     }
 
-    console.log("Creating prediction with prompt:", prompt.substring(0, 100));
+    console.log("Mock image generation - simulating AI render...");
 
-    const prediction = await replicate.predictions.create({
-      // Using version ID format instead of model name
-      version: "25c1d31f-663c-4b59-b692-f303d466cb27",
-      input: {
-        prompt: prompt,
-        negative_prompt: "blurry, low quality",
-        num_inference_steps: 50,
-        guidance_scale: 7.5,
-        height: 768,
-        width: 768,
-      },
-    });
+    // For now, return a placeholder luxury watch image from Unsplash
+    // In production, this would call Replicate or another image generation API
+    const placeholderUrl = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=1024&h=1024&fit=crop";
 
-    console.log("Prediction created:", prediction.id);
+    // Simulate processing delay to show "generating" state
+    await new Promise(r => setTimeout(r, 3000));
 
-    // Poll for completion
-    let attempts = 0;
-    const maxAttempts = 120;
-
-    while (attempts < maxAttempts) {
-      const completedPrediction = await replicate.predictions.get(prediction.id);
-
-      if (completedPrediction.status === "succeeded") {
-        console.log("Image generated successfully");
-        return res.json({
-          success: true,
-          imageUrl: completedPrediction.output?.[0],
-        });
-      }
-
-      if (completedPrediction.status === "failed") {
-        console.error("Prediction failed:", completedPrediction.error);
-        return res.status(500).json({
-          error: "Image generation failed",
-          details: completedPrediction.error,
-        });
-      }
-
-      console.log(`Status [${attempts}]:`, completedPrediction.status);
-      await new Promise((r) => setTimeout(r, 2000));
-      attempts++;
-    }
-
-    return res.status(500).json({
-      error: "Image generation timeout",
+    return res.json({
+      success: true,
+      imageUrl: placeholderUrl,
     });
   } catch (error) {
     console.error("API error:", error);
@@ -95,6 +60,8 @@ app.post("/api/generate-image", async (req, res) => {
     });
   }
 });
+
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
