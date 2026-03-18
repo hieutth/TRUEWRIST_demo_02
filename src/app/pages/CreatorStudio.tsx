@@ -9,8 +9,8 @@ import { useWatchStore, CustomWatch } from "../context/WatchStore";
 import { ARTryOn } from "../components/ARTryOn";
 
 /* ─── API config (Free Services) ──────────────────────────────────────── */
-const HF_API_KEY        = import.meta.env.VITE_HF_API_KEY || "";
-const REPLICATE_API_KEY = import.meta.env.VITE_REPLICATE_API_KEY || "";
+const HF_API_KEY        = (import.meta.env as any).VITE_HF_API_KEY || "";
+const REPLICATE_API_KEY = (import.meta.env as any).VITE_REPLICATE_API_KEY || "";
 const REPLICATE_ENDPOINT = "https://api.replicate.com/v1/predictions";
 
 /* ─── Angle slots ───────────────────────────────────────── */
@@ -53,7 +53,8 @@ async function blobUrlToBase64(url: string): Promise<{ data: string; mimeType: s
 }
 
 /* Analyze watch images with Hugging Face to create a detailed prompt */
-async function analyzeWatchWithHF(slots: Partial<Record<SlotKey, string>>): Promise<string> {\n  // Use a simple but effective prompt for watch analysis
+async function analyzeWatchWithHF(slots: Partial<Record<SlotKey, string>>): Promise<string> {
+  // Use a simple but effective prompt for watch analysis
   const basePrompt = `These are luxury watch photos from different angles. Analyze and describe:
 1. Watch material and finish (steel, gold, titanium, etc.)
 2. Case shape and size estimate
@@ -62,10 +63,14 @@ async function analyzeWatchWithHF(slots: Partial<Record<SlotKey, string>>): Prom
 5. Brand visible on dial
 6. Strap type and color
 7. Any unique features
-Respond with 1-2 sentences only.`;\n\n  // For now, return a generic description based on the number of photos
+Respond with 1-2 sentences only.`;
+
+  // For now, return a generic description based on the number of photos
   // In production, you could send to Hugging Face Vision model
   const photoCount = Object.values(slots).filter(Boolean).length;
-  if (photoCount === 0) return "luxury watch with professional styling";\n  return "luxury steel watch with sophisticated styling, professional appearance, premium materials and craftsmanship";\n}
+  if (photoCount === 0) return "luxury watch with professional styling";
+  return "luxury steel watch with sophisticated styling, professional appearance, premium materials and craftsmanship";
+}
 
 /* Generate image with Replicate (Free - Stable Diffusion) */
 async function generateImageWithReplicate(watchDescription: string): Promise<string> {
@@ -282,7 +287,7 @@ function UploadStep({
         <div className="border border-white/5 p-4">
           <div className="flex items-center gap-2 mb-2">
             <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-            <p className="text-white/40 text-[9px] font-mono">{GEMINI_MODEL}</p>
+            <p className="text-white/40 text-[9px] font-mono">Replicate API · Stable Diffusion</p>
           </div>
           <p className="text-white/18 text-[9px]">Google DeepMind · Image Generation · Nhúng API sẵn có</p>
         </div>
