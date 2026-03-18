@@ -8,10 +8,10 @@ import {
 import { useWatchStore, CustomWatch } from "../context/WatchStore";
 import { ARTryOn } from "../components/ARTryOn";
 
-/* ─── API config (Free Services) ──────────────────────────────────────── */
-const HF_API_KEY        = (import.meta.env as any).VITE_HF_API_KEY || "";
+/* ─── API config ──────────────────────────────────────── */
+const GEMINI_API_KEY    = (import.meta.env as any).VITE_GEMINI_API_KEY || "";
+const GEMINI_API_URL    = (import.meta.env as any).VITE_GEMINI_API_URL || "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
 const REPLICATE_API_KEY = (import.meta.env as any).VITE_REPLICATE_API_KEY || "";
-const REPLICATE_ENDPOINT = "https://api.replicate.com/v1/predictions";
 
 /* ─── Angle slots ───────────────────────────────────────── */
 const ANGLE_SLOTS = [
@@ -50,26 +50,6 @@ async function blobUrlToBase64(url: string): Promise<{ data: string; mimeType: s
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
-}
-
-/* Analyze watch images with Hugging Face to create a detailed prompt */
-async function analyzeWatchWithHF(slots: Partial<Record<SlotKey, string>>): Promise<string> {
-  // Use a simple but effective prompt for watch analysis
-  const basePrompt = `These are luxury watch photos from different angles. Analyze and describe:
-1. Watch material and finish (steel, gold, titanium, etc.)
-2. Case shape and size estimate
-3. Bezel style
-4. Dial color and design
-5. Brand visible on dial
-6. Strap type and color
-7. Any unique features
-Respond with 1-2 sentences only.`;
-
-  // For now, return a generic description based on the number of photos
-  // In production, you could send to Hugging Face Vision model
-  const photoCount = Object.values(slots).filter(Boolean).length;
-  if (photoCount === 0) return "luxury watch with professional styling";
-  return "luxury steel watch with sophisticated styling, professional appearance, premium materials and craftsmanship";
 }
 
 /* Generate image with Replicate via backend API */
@@ -117,10 +97,95 @@ async function generateImageWithReplicate(watchDescription: string): Promise<str
   return json.imageUrl;
 }
 
-/* Main function to generate watch image */
+/* Main function to generate watch image with Gemini AI */
 async function callGemini(slots: Partial<Record<SlotKey, string>>): Promise<string> {
-  const watchDescription = await analyzeWatchWithHF(slots);
-  return generateImageWithReplicate(watchDescription);
+  if (!GEMINI_API_KEY) {
+    throw new Error("Gemini API key not configured. Please set VITE_GEMINI_API_KEY in .env.local");
+  }
+
+  // Prepare image data for Gemini
+  const imageParts: Array<{ inlineData: { data: string; mimeType: string } }> = [];
+  
+  for (const [key, dataUrl] of Object.entries(slots)) {
+    if (dataUrl && typeof dataUrl === "string") {
+      try {
+        const { data, mimeType } = await blobUrlToBase64(dataUrl);
+        imageParts.push({
+          inlineData: { data, mimeType }
+        });
+      } catch (err) {
+        console.error(`Failed to convert image ${key}:`, err);
+      }
+    }
+  }
+
+  if (imageParts.length === 0) {
+    throw new Error("No valid images to analyze");
+  }
+
+  const analysisPrompt = `Analyze these luxury watch photos in detail and provide a comprehensive description for 3D rendering:
+1. Watch brand and model (if visible)
+2. Case material and finish (steel, gold, titanium, etc.)
+3. Case shape (round, square, cushion, tonneau)
+4. Case diameter estimate in mm
+5. Bezel type and material
+6. Dial color, finish, and design
+7. Hour markers type
+8. Hands style and color
+9. Strap/bracelet type and color
+10. Water resistance/complications visible
+11. Any distinctive features or engravings
+12. Overall condition and wear
+
+Provide a detailed, structured description suitable for creating a photorealistic 3D product render.`;
+
+  const requestBody = {
+    contents: [
+      {
+        parts: [
+          ...imageParts,
+          {
+            text: analysisPrompt
+          }
+        ]
+      }
+    ],
+    generationConfig: {
+      temperature: 0.7,
+      topK: 40,
+      topP: 0.95,
+      maxOutputTokens: 1024,
+    }
+  };
+
+  try {
+    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error("Gemini API Error:", error);
+      const errorMsg = error?.error?.message || `Gemini API error: ${response.status}`;
+      throw new Error(errorMsg);
+    }
+
+    const result = await response.json();
+    const watchDescription = result?.candidates?.[0]?.content?.parts?.[0]?.text || 
+                             "luxury watch with professional styling";
+
+    console.log("Watch analysis complete:", watchDescription);
+
+    // Generate image with Replicate using the analysis
+    return generateImageWithReplicate(watchDescription);
+  } catch (err) {
+    console.error("Gemini API error:", err);
+    throw err instanceof Error ? err : new Error("Gemini API analysis failed");
+  }
 }
 
 /* ─── Step indicator ────────────────────────────────────── */
