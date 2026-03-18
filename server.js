@@ -39,21 +39,56 @@ app.post("/api/generate-image", async (req, res) => {
       return res.status(400).json({ error: "Prompt is required" });
     }
 
-    console.log("Mock image generation - simulating AI render...");
+    console.log("Creating prediction with prompt:", prompt.substring(0, 50) + "...");
 
-    // For now, return a placeholder luxury watch image from Unsplash
-    // In production, this would call Replicate or another image generation API
-    const placeholderUrl = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=1024&h=1024&fit=crop";
+    const prediction = await replicate.predictions.create({
+      model: "stability-ai/stable-diffusion-3",
+      input: {
+        prompt: prompt,
+        negative_prompt: "blurry, low quality, watermark",
+        num_outputs: 1,
+        height: 1024,
+        width: 1024,
+      },
+    });
 
-    // Simulate processing delay to show "generating" state
-    await new Promise(r => setTimeout(r, 3000));
+    console.log("Prediction created:", prediction.id);
+    const predictionId = prediction.id;
+    
+    // Poll for completion
+    let attempts = 0;
+    const maxAttempts = 120;
 
-    return res.json({
-      success: true,
-      imageUrl: placeholderUrl,
+    while (attempts < maxAttempts) {
+      const completedPrediction = await replicate.predictions.get(predictionId);
+
+      if (completedPrediction.status === "succeeded") {
+        console.log("✅ Image generated successfully!");
+        const imageUrl = Array.isArray(completedPrediction.output) ? completedPrediction.output[0] : completedPrediction.output;
+        return res.json({
+          success: true,
+          imageUrl: imageUrl,
+        });
+      }
+
+      if (completedPrediction.status === "failed") {
+        console.error("❌ Prediction failed:", completedPrediction.error);
+        return res.status(500).json({
+          error: "Image generation failed",
+          details: completedPrediction.error,
+        });
+      }
+
+      console.log(`⏳ Status [${attempts}/120]:`, completedPrediction.status);
+      await new Promise((r) => setTimeout(r, 2000));
+      attempts++;
+    }
+
+    return res.status(500).json({
+      error: "Image generation timeout",
     });
   } catch (error) {
-    console.error("API error:", error);
+    console.error("❌ API error:", error);
     res.status(500).json({
       error: "Server error",
       details: error instanceof Error ? error.message : String(error),
