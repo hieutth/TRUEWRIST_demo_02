@@ -85,6 +85,13 @@ async function generateImageWithReplicate(watchDescription: string): Promise<str
 - Style similar to Omega, Rolex or IWC official product photography
 - High resolution, sharp details, professional product photography`;
 
+  // Check if API key is set
+  if (!REPLICATE_API_KEY) {
+    throw new Error("Replicate API key not configured. Add VITE_REPLICATE_API_KEY to .env.local");
+  }
+
+  console.log("Calling Replicate API with key:", REPLICATE_API_KEY.substring(0, 10) + "...");
+
   const res = await fetch(REPLICATE_ENDPOINT, {
     method: "POST",
     headers: {
@@ -99,27 +106,43 @@ async function generateImageWithReplicate(watchDescription: string): Promise<str
         image_dimensions: "1024x1024",
       },
     }),
+  }).catch(err => {
+    console.error("Fetch error:", err);
+    throw new Error(`Network error: ${err.message}`);
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    const msg = (err as { detail?: string })?.detail || `HTTP ${res.status}`;
-    throw new Error(msg);
+    const text = await res.text().catch(() => "");
+    console.error("Response not OK:", res.status, text);
+    try {
+      const err = JSON.parse(text);
+      const msg = (err as { detail?: string })?.detail || `HTTP ${res.status}`;
+      throw new Error(msg);
+    } catch {
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
   }
 
   const json = await res.json() as { id: string; output?: string[] };
+  console.log("Prediction created:", json.id);
   const predictionId = json.id;
   
   // Poll for completion
   let attempts = 0;
-  while (attempts < 60) {
-    await new Promise(r => setTimeout(r, 1000));
+  while (attempts < 120) {
+    await new Promise(r => setTimeout(r, 2000));
     const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
       headers: { "Authorization": `Token ${REPLICATE_API_KEY}` },
+    }).catch(err => {
+      console.error("Poll fetch error:", err);
+      throw err;
     });
+    
     const pollJson = await pollRes.json() as { status: string; output?: string[] };
+    console.log(`Status [${attempts}]:`, pollJson.status);
     
     if (pollJson.status === "succeeded" && pollJson.output?.[0]) {
+      console.log("Image generated successfully!");
       return pollJson.output[0];
     }
     if (pollJson.status === "failed") {
@@ -127,7 +150,7 @@ async function generateImageWithReplicate(watchDescription: string): Promise<str
     }
     attempts++;
   }
-  throw new Error("Replicate generation timeout");
+  throw new Error("Replicate generation timeout (2 minutes)");
 }
 
 /* Main function to generate watch image */
