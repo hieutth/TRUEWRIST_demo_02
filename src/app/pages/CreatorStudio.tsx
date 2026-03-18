@@ -85,7 +85,6 @@ Output ONLY the rendered image, no background text or elements.`;
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ parts }],
-      generationConfig: { responseModalities: ["IMAGE"] },
     }),
   });
 
