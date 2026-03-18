@@ -72,7 +72,7 @@ Respond with 1-2 sentences only.`;
   return "luxury steel watch with sophisticated styling, professional appearance, premium materials and craftsmanship";
 }
 
-/* Generate image with Replicate (Free - Stable Diffusion) */
+/* Generate image with Replicate via backend API */
 async function generateImageWithReplicate(watchDescription: string): Promise<string> {
   const prompt = `Create a photorealistic 3D product render of a ${watchDescription} with:
 - Pure deep black background
@@ -85,72 +85,36 @@ async function generateImageWithReplicate(watchDescription: string): Promise<str
 - Style similar to Omega, Rolex or IWC official product photography
 - High resolution, sharp details, professional product photography`;
 
-  // Check if API key is set
-  if (!REPLICATE_API_KEY) {
-    throw new Error("Replicate API key not configured. Add VITE_REPLICATE_API_KEY to .env.local");
-  }
+  console.log("Calling backend API to generate image...");
 
-  console.log("Calling Replicate API with key:", REPLICATE_API_KEY.substring(0, 10) + "...");
-
-  const res = await fetch(REPLICATE_ENDPOINT, {
+  const res = await fetch("http://localhost:3000/api/generate-image", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Token ${REPLICATE_API_KEY}`,
-    },
-    body: JSON.stringify({
-      version: "db21e45d3f7023abc9f30f5cc4b526da18016dbb805fadde67f6b1b9e869bd38", // Stable Diffusion v2.1
-      input: {
-        prompt: prompt,
-        num_outputs: 1,
-        image_dimensions: "1024x1024",
-      },
-    }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
   }).catch(err => {
-    console.error("Fetch error:", err);
-    throw new Error(`Network error: ${err.message}`);
+    console.error("Backend fetch error:", err);
+    throw new Error(`Backend connection error: ${err.message}`);
   });
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    console.error("Response not OK:", res.status, text);
+    console.error("Backend response error:", res.status, text);
     try {
       const err = JSON.parse(text);
-      const msg = (err as { detail?: string })?.detail || `HTTP ${res.status}`;
-      throw new Error(msg);
+      throw new Error((err as { error?: string; details?: string })?.error || `HTTP ${res.status}`);
     } catch {
-      throw new Error(`HTTP ${res.status}: ${text}`);
+      throw new Error(`Backend error: HTTP ${res.status}`);
     }
   }
 
-  const json = await res.json() as { id: string; output?: string[] };
-  console.log("Prediction created:", json.id);
-  const predictionId = json.id;
+  const json = await res.json() as { success?: boolean; imageUrl?: string; error?: string };
   
-  // Poll for completion
-  let attempts = 0;
-  while (attempts < 120) {
-    await new Promise(r => setTimeout(r, 2000));
-    const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
-      headers: { "Authorization": `Token ${REPLICATE_API_KEY}` },
-    }).catch(err => {
-      console.error("Poll fetch error:", err);
-      throw err;
-    });
-    
-    const pollJson = await pollRes.json() as { status: string; output?: string[] };
-    console.log(`Status [${attempts}]:`, pollJson.status);
-    
-    if (pollJson.status === "succeeded" && pollJson.output?.[0]) {
-      console.log("Image generated successfully!");
-      return pollJson.output[0];
-    }
-    if (pollJson.status === "failed") {
-      throw new Error("Replicate image generation failed");
-    }
-    attempts++;
+  if (!json.success || !json.imageUrl) {
+    throw new Error(json.error || "Image generation failed");
   }
-  throw new Error("Replicate generation timeout (2 minutes)");
+
+  console.log("Image generated successfully!");
+  return json.imageUrl;
 }
 
 /* Main function to generate watch image */
