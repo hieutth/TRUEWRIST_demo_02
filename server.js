@@ -18,7 +18,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const apiKey = process.env.REPLICATE_API_KEY || "r8_YzpfLLDc2SKjRbX9KXBJHyFqE0UAKFI3dBX8e";
+const apiKey = process.env.REPLICATE_API_KEY || "r8_IU2hPYIJhI8nnhbj2fcCRu5vyIV6mmX1ZwPRU";
 if (!apiKey) {
   console.error("ERROR: REPLICATE_API_KEY not found!");
   console.error("Env vars:", Object.keys(process.env).filter(k => k.includes("REPLICATE")));
@@ -39,56 +39,20 @@ app.post("/api/generate-image", async (req, res) => {
       return res.status(400).json({ error: "Prompt is required" });
     }
 
-    console.log("Creating prediction with prompt:", prompt.substring(0, 50) + "...");
+    console.log("Simulating AI image generation...");
 
-    const prediction = await replicate.predictions.create({
-      model: "stability-ai/stable-diffusion-3",
-      input: {
-        prompt: prompt,
-        negative_prompt: "blurry, low quality, watermark",
-        num_outputs: 1,
-        height: 1024,
-        width: 1024,
-      },
-    });
+    // Return a placeholder luxury watch image (FREE, no API calls needed)
+    const placeholderUrl = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=1024&h=1024&fit=crop";
 
-    console.log("Prediction created:", prediction.id);
-    const predictionId = prediction.id;
-    
-    // Poll for completion
-    let attempts = 0;
-    const maxAttempts = 120;
+    // Simulate 3-5 second processing
+    await new Promise(r => setTimeout(r, Math.random() * 2000 + 3000));
 
-    while (attempts < maxAttempts) {
-      const completedPrediction = await replicate.predictions.get(predictionId);
-
-      if (completedPrediction.status === "succeeded") {
-        console.log("✅ Image generated successfully!");
-        const imageUrl = Array.isArray(completedPrediction.output) ? completedPrediction.output[0] : completedPrediction.output;
-        return res.json({
-          success: true,
-          imageUrl: imageUrl,
-        });
-      }
-
-      if (completedPrediction.status === "failed") {
-        console.error("❌ Prediction failed:", completedPrediction.error);
-        return res.status(500).json({
-          error: "Image generation failed",
-          details: completedPrediction.error,
-        });
-      }
-
-      console.log(`⏳ Status [${attempts}/120]:`, completedPrediction.status);
-      await new Promise((r) => setTimeout(r, 2000));
-      attempts++;
-    }
-
-    return res.status(500).json({
-      error: "Image generation timeout",
+    return res.json({
+      success: true,
+      imageUrl: placeholderUrl,
     });
   } catch (error) {
-    console.error("❌ API error:", error);
+    console.error("API error:", error);
     res.status(500).json({
       error: "Server error",
       details: error instanceof Error ? error.message : String(error),
