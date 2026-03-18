@@ -8,10 +8,12 @@ import {
 import { useWatchStore, CustomWatch } from "../context/WatchStore";
 import { ARTryOn } from "../components/ARTryOn";
 
-/* ─── Gemini config ─────────────────────────────────────── */
+/* ─── API config ──────────────────────────────────────────── */
 const GEMINI_API_KEY  = "AIzaSyAcSjONkgQ8bgdhk_eeCdyOdfkd99CnIKs";
 const GEMINI_MODEL    = "gemini-2.0-flash";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const OPENAI_API_KEY  = "sk-proj-YOUR_OPENAI_API_KEY_HERE"; // Replace with your OpenAI API key
+const DALLE3_ENDPOINT = "https://api.openai.com/v1/images/generations";
 
 /* ─── Angle slots ───────────────────────────────────────── */
 const ANGLE_SLOTS = [
@@ -52,40 +54,31 @@ async function blobUrlToBase64(url: string): Promise<{ data: string; mimeType: s
   });
 }
 
-async function callGemini(slots: Partial<Record<SlotKey, string>>): Promise<string> {
-  const prompt = `You are a professional luxury watch product photographer and 3D artist.
-I will provide ${Object.keys(slots).length} reference photo(s) of a real wristwatch from different angles.
+/* Analyze watch images with Gemini to create a detailed prompt */
+async function analyzeWatchWithGemini(slots: Partial<Record<SlotKey, string>>): Promise<string> {
+  const analysisPrompt = `Analyze these luxury watch reference photos and describe the watch characteristics:
+- Material & finish (brushed steel, polished, PVD, etc.)
+- Case diameter and shape
+- Bezel type
+- Dial color and markings
+- Brand visible on dial
+- Strap/bracelet type and color
+- Any distinctive features
 
-Generate ONE photorealistic 3D product render of this watch with:
-- Pure deep black background
-- Dramatic directional studio lighting from upper-left
-- Subtle warm golden rim light on the right edge
-- Watch positioned at a heroic 35° angle, slightly elevated
-- Ultra-realistic metal case reflections and brushed/polished textures
-- Crystal-clear watch glass with realistic reflections
-- Visible dial details: indices, hands, subdials if any
-- Professional floating appearance with soft drop shadow below
-- Style similar to Omega, Rolex or IWC official product photography
-- High resolution, sharp details
+Provide a concise 1-2 sentence description suitable for image generation.`;
 
-Output ONLY the rendered image, no background text or elements.`;
-
-  const parts: object[] = [{ text: prompt }];
+  const parts: object[] = [{ text: analysisPrompt }];
   for (const key of Object.keys(slots) as SlotKey[]) {
     const url = slots[key];
     if (!url) continue;
-    const slot = ANGLE_SLOTS.find((s) => s.key === key);
     const { data, mimeType } = await blobUrlToBase64(url);
-    parts.push({ text: `Reference photo – ${slot?.label || key}:` });
     parts.push({ inline_data: { mime_type: mimeType, data } });
   }
 
   const res = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_API_KEY}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts }],
-    }),
+    body: JSON.stringify({ contents: [{ parts }] }),
   });
 
   if (!res.ok) {
@@ -95,13 +88,56 @@ Output ONLY the rendered image, no background text or elements.`;
   }
 
   const json = await res.json() as {
-    candidates?: Array<{
-      content?: { parts?: Array<{ inlineData?: { mimeType?: string; data?: string } }> };
-    }>;
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
-  const part = json.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data);
-  if (!part?.inlineData?.data) throw new Error("Gemini không trả về ảnh. Hãy thử lại.");
-  return `data:${part.inlineData.mimeType || "image/png"};base64,${part.inlineData.data}`;
+  const textPart = json.candidates?.[0]?.content?.parts?.find((p) => p.text);
+  return textPart?.text || "luxury watch with professional styling";
+}
+
+/* Generate image with DALL-E 3 */
+async function generateImageWithDALLE3(watchDescription: string): Promise<string> {
+  const prompt = `Create a photorealistic 3D product render of a ${watchDescription} with:
+- Pure deep black background
+- Dramatic directional studio lighting from upper-left
+- Subtle warm golden rim light on the right edge
+- Watch positioned at a heroic 35° angle, slightly elevated
+- Ultra-realistic metal reflections and textures
+- Crystal-clear watch glass with realistic reflections
+- Professional floating appearance with soft drop shadow
+- Style similar to Omega, Rolex or IWC official product photography
+- High resolution, sharp details, professional product photography`;
+
+  const res = await fetch(DALLE3_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "dall-e-3",
+      prompt: prompt,
+      n: 1,
+      size: "1024x1024",
+      quality: "hd",
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = (err as { error?: { message?: string } })?.error?.message || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+
+  const json = await res.json() as { data?: Array<{ url?: string }> };
+  const imageUrl = json.data?.[0]?.url;
+  if (!imageUrl) throw new Error("DALL-E 3 không trả về URL ảnh. Hãy thử lại.");
+  return imageUrl;
+}
+
+/* Main function to generate watch image */
+async function callGemini(slots: Partial<Record<SlotKey, string>>): Promise<string> {
+  const watchDescription = await analyzeWatchWithGemini(slots);
+  return generateImageWithDALLE3(watchDescription);
 }
 
 /* ─── Step indicator ────────────────────────────────────── */
