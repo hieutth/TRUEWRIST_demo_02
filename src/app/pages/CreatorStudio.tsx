@@ -8,12 +8,12 @@ import {
 import { useWatchStore, CustomWatch } from "../context/WatchStore";
 import { ARTryOn } from "../components/ARTryOn";
 
-/* ─── API config ──────────────────────────────────────────── */
-const GEMINI_API_KEY  = import.meta.env.AIzaSyAcSjONkgQ8bgdhk_eeCdyOdfkd99CnIKs || "";
-const GEMINI_MODEL    = "gemini-2.0-flash";
-const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-const OPENAI_API_KEY  = import.meta.env.AIzaSyAcSjONkgQ8bgdhk_eeCdyOdfkd99CnIKs || "";
-const DALLE3_ENDPOINT = "https://api.openai.com/v1/images/generations";
+/* ─── API config (Free Services) ──────────────────────────────────────── */
+const GEMINI_API_KEY    = import.meta.env.VITE_GEMINI_API_KEY || "";
+const GEMINI_MODEL      = "gemini-2.0-flash";
+const GEMINI_ENDPOINT   = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const REPLICATE_API_KEY = import.meta.env.VITE_REPLICATE_API_KEY || "";
+const REPLICATE_ENDPOINT = "https://api.replicate.com/v1/predictions";
 
 /* ─── Angle slots ───────────────────────────────────────── */
 const ANGLE_SLOTS = [
@@ -94,8 +94,8 @@ Provide a concise 1-2 sentence description suitable for image generation.`;
   return textPart?.text || "luxury watch with professional styling";
 }
 
-/* Generate image with DALL-E 3 */
-async function generateImageWithDALLE3(watchDescription: string): Promise<string> {
+/* Generate image with Replicate (Free - Stable Diffusion) */
+async function generateImageWithReplicate(watchDescription: string): Promise<string> {
   const prompt = `Create a photorealistic 3D product render of a ${watchDescription} with:
 - Pure deep black background
 - Dramatic directional studio lighting from upper-left
@@ -107,37 +107,55 @@ async function generateImageWithDALLE3(watchDescription: string): Promise<string
 - Style similar to Omega, Rolex or IWC official product photography
 - High resolution, sharp details, professional product photography`;
 
-  const res = await fetch(DALLE3_ENDPOINT, {
+  const res = await fetch(REPLICATE_ENDPOINT, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+      "Authorization": `Token ${REPLICATE_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "dall-e-3",
-      prompt: prompt,
-      n: 1,
-      size: "1024x1024",
-      quality: "hd",
+      version: "db21e45d3f7023abc9f30f5cc4b526da18016dbb805fadde67f6b1b9e869bd38", // Stable Diffusion v2.1
+      input: {
+        prompt: prompt,
+        num_outputs: 1,
+        image_dimensions: "1024x1024",
+      },
     }),
   });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    const msg = (err as { error?: { message?: string } })?.error?.message || `HTTP ${res.status}`;
+    const msg = (err as { detail?: string })?.detail || `HTTP ${res.status}`;
     throw new Error(msg);
   }
 
-  const json = await res.json() as { data?: Array<{ url?: string }> };
-  const imageUrl = json.data?.[0]?.url;
-  if (!imageUrl) throw new Error("DALL-E 3 không trả về URL ảnh. Hãy thử lại.");
-  return imageUrl;
+  const json = await res.json() as { id: string; output?: string[] };
+  const predictionId = json.id;
+  
+  // Poll for completion
+  let attempts = 0;
+  while (attempts < 60) {
+    await new Promise(r => setTimeout(r, 1000));
+    const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
+      headers: { "Authorization": `Token ${REPLICATE_API_KEY}` },
+    });
+    const pollJson = await pollRes.json() as { status: string; output?: string[] };
+    
+    if (pollJson.status === "succeeded" && pollJson.output?.[0]) {
+      return pollJson.output[0];
+    }
+    if (pollJson.status === "failed") {
+      throw new Error("Replicate image generation failed");
+    }
+    attempts++;
+  }
+  throw new Error("Replicate generation timeout");
 }
 
 /* Main function to generate watch image */
 async function callGemini(slots: Partial<Record<SlotKey, string>>): Promise<string> {
   const watchDescription = await analyzeWatchWithGemini(slots);
-  return generateImageWithDALLE3(watchDescription);
+  return generateImageWithReplicate(watchDescription);
 }
 
 /* ─── Step indicator ────────────────────────────────────── */
