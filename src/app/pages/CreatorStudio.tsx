@@ -9,10 +9,10 @@ import { useWatchStore, CustomWatch } from "../context/WatchStore";
 import { ARTryOn } from "../components/ARTryOn";
 
 /* ─── API config ──────────────────────────────────────────── */
-const GEMINI_API_KEY  = import.meta.env.VITE_GEMINI_API_KEY || "";
+const GEMINI_API_KEY  = import.meta.env.AIzaSyAcSjONkgQ8bgdhk_eeCdyOdfkd99CnIKs || "";
 const GEMINI_MODEL    = "gemini-2.0-flash";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-const OPENAI_API_KEY  = import.meta.env.VITE_OPENAI_API_KEY || "";
+const OPENAI_API_KEY  = import.meta.env.AIzaSyAcSjONkgQ8bgdhk_eeCdyOdfkd99CnIKs || "";
 const DALLE3_ENDPOINT = "https://api.openai.com/v1/images/generations";
 
 /* ─── Angle slots ───────────────────────────────────────── */
