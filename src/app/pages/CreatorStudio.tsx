@@ -10,7 +10,7 @@ import { ARTryOn } from "../components/ARTryOn";
 
 /* ─── Gemini config ─────────────────────────────────────── */
 const GEMINI_API_KEY  = "AIzaSyAcSjONkgQ8bgdhk_eeCdyOdfkd99CnIKs";
-const GEMINI_MODEL    = "gemini-2.5-flash-preview-image-generation";
+const GEMINI_MODEL    = "gemini-2.0-flash";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 /* ─── Angle slots ───────────────────────────────────────── */
